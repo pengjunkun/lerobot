@@ -121,6 +121,10 @@ class DiffusionPolicy(PreTrainedPolicy):
         "horizon" may not the best name to describe what the variable actually means, because this period is
         actually measured from the first observation which (if `n_obs_steps` > 1) happened in the past.
         """
+        import time
+        import logging
+        # Block 1: Normalize and preprocess inputs
+        start_time = time.perf_counter()
         batch = self.normalize_inputs(batch)
         if self.config.image_features:
             batch = dict(batch)  # shallow copy so that adding a key doesn't modify the original
@@ -129,8 +133,12 @@ class DiffusionPolicy(PreTrainedPolicy):
             )
         # Note: It's important that this happens after stacking the images into a single key.
         self._queues = populate_queues(self._queues, batch)
+        block1_time = time.perf_counter() - start_time
+        logging.info(f"Block 1 (normalize & preprocess) time: {block1_time*1000:.2f}ms")
 
         if len(self._queues["action"]) == 0:
+            # Block 2: Generate actions if queue is empty
+            start_time = time.perf_counter()
             # stack n latest observations from the queue
             batch = {k: torch.stack(list(self._queues[k]), dim=1) for k in batch if k in self._queues}
             actions = self.diffusion.generate_actions(batch)
@@ -139,8 +147,14 @@ class DiffusionPolicy(PreTrainedPolicy):
             actions = self.unnormalize_outputs({"action": actions})["action"]
 
             self._queues["action"].extend(actions.transpose(0, 1))
+            block2_time = time.perf_counter() - start_time
+            logging.info(f"Block 2 (generate actions) time: {block2_time*1000:.2f}ms")
 
+        # Block 3: Get next action from queue
+        start_time = time.perf_counter()
         action = self._queues["action"].popleft()
+        block3_time = time.perf_counter() - start_time
+        logging.info(f"Block 3 (get action from queue) time: {block3_time*1000:.2f}ms")
         return action
 
     def forward(self, batch: dict[str, Tensor]) -> tuple[Tensor, None]:

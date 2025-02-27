@@ -238,10 +238,24 @@ def control_loop(
         if teleoperate:
             observation, action = robot.teleop_step(record_data=True)
         else:
-            observation = robot.capture_observation()
+            # Try to load cached observation first
+            observation_cache_file = "observation_cache.pkl"
+            import os
+            import pickle
+            if os.path.exists(observation_cache_file):
+                with open(observation_cache_file, "rb") as f:
+                    observation = pickle.load(f)
+            else:
+                # Capture new observation and cache it
+                observation = robot.capture_observation()
+                with open(observation_cache_file, "wb") as f:
+                    pickle.dump(observation, f)
 
             if policy is not None:
+                pred_action_start = time.perf_counter()
                 pred_action = predict_action(observation, policy, device, use_amp)
+                pred_action_dt = time.perf_counter() - pred_action_start
+                logging.info(f"Prediction time: {pred_action_dt*1000:.2f}ms ({1/pred_action_dt:.1f}hz)")
                 # Action can eventually be clipped using `max_relative_target`,
                 # so action actually sent is saved in the dataset.
                 action = robot.send_action(pred_action)
