@@ -8,6 +8,7 @@ pip install -e ".[pusht]"`
 ```
 """
 
+import time
 from pathlib import Path
 
 import gym_pusht  # noqa: F401
@@ -51,6 +52,10 @@ print(env.observation_space)
 print(policy.config.output_features)
 print(env.action_space)
 
+print(f"{policy.config.n_obs_steps=}")
+print(f"{policy.config.horizon=}")
+print(f"{policy.config.n_action_steps=}")
+
 # Reset the policy and environments to prepare for rollout
 policy.reset()
 numpy_observation, info = env.reset(seed=42)
@@ -92,7 +97,10 @@ while not done:
 
     # Predict the next action with respect to the current observation
     with torch.inference_mode():
+        start_time = time.perf_counter()
         action = policy.select_action(observation)
+        inference_time = time.perf_counter() - start_time
+        print(f"Policy inference time: {inference_time:.4f} seconds")
 
     # Prepare the action for the environment
     numpy_action = action.squeeze(0).to("cpu").numpy()
@@ -117,6 +125,7 @@ else:
 
 # Get the speed of environment (i.e. its number of frames per second).
 fps = env.metadata["render_fps"]
+print(f"{fps=}")
 
 # Encode all frames into a mp4 video.
 video_path = output_directory / "rollout.mp4"
