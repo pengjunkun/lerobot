@@ -4,6 +4,8 @@
 
 
 import logging
+import os
+import pickle
 import time
 import traceback
 from contextlib import nullcontext
@@ -212,8 +214,8 @@ def control_loop(
     fps: int | None = None,
 ):
     # TODO(rcadene): Add option to record logs
-    if not robot.is_connected:
-        robot.connect()
+    # if not robot.is_connected:
+    #     robot.connect()
 
     if events is None:
         events = {"exit_early": False}
@@ -232,6 +234,14 @@ def control_loop(
 
     timestamp = 0
     start_episode_t = time.perf_counter()
+
+    # Try to load cached observation first
+    observation_cache_file = "observation_cache.pkl"
+    loaded_observation = None
+    if os.path.exists(observation_cache_file):
+        with open(observation_cache_file, "rb") as f:
+            loaded_observation = pickle.load(f)
+
     while timestamp < control_time_s:
         start_loop_t = time.perf_counter()
 
@@ -239,17 +249,11 @@ def control_loop(
             observation, action = robot.teleop_step(record_data=True)
         else:
             # Try to load cached observation first
-            observation_cache_file = "observation_cache.pkl"
-            import os
-            import pickle
-            if os.path.exists(observation_cache_file):
-                with open(observation_cache_file, "rb") as f:
-                    observation = pickle.load(f)
+            if loaded_observation is not None:
+                observation = loaded_observation
             else:
                 # Capture new observation and cache it
                 observation = robot.capture_observation()
-                with open(observation_cache_file, "wb") as f:
-                    pickle.dump(observation, f)
 
             if policy is not None:
                 pred_action_start = time.perf_counter()
@@ -258,12 +262,12 @@ def control_loop(
                 logging.info(f"Prediction time: {pred_action_dt*1000:.2f}ms ({1/pred_action_dt:.1f}hz)")
                 # Action can eventually be clipped using `max_relative_target`,
                 # so action actually sent is saved in the dataset.
-                action = robot.send_action(pred_action)
-                action = {"action": action}
+                # action = robot.send_action(pred_action)
+                # action = {"action": action}
 
-        if dataset is not None:
-            frame = {**observation, **action}
-            dataset.add_frame(frame)
+        # if dataset is not None:
+        #     frame = {**observation, **action}
+        #     dataset.add_frame(frame)
 
         if display_cameras and not is_headless():
             image_keys = [key for key in observation if "image" in key]
